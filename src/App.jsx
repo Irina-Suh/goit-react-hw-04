@@ -1,68 +1,86 @@
 import './App.css'
 import { useState , useEffect } from 'react';
-import Description from './components/Description/Description';
-import Options from './components/Options/Options';
-import Feedback from './components/Feedback/Feedback';
-import Notification from './components/Notification/Notification'
+import SearchBar from './components/SearchBar/SearchBar';
+import { fetchHits } from './services/api';
+import ImageGallery from './components/ImageGallery/ImageGallery';
+import Loader from './components/Loader/Loader';
+import toast from 'react-hot-toast';
+import ErrorMessage from './components/ErrorMessage/ErrorMessage';
+import LoadMoreBtn from './components/LoadMoreBtn/LoadMoreBtn';
+import ImageModal from './components/ImageModal/ImageModal';
+
+
+
 
 const App = () => {
+const [hits,setHits] = useState ([]);
+const [query, setQuery] = useState(''); 
+let [isLoading, setIsLoading] = useState(false);
+const [page, setPage] = useState(0);
+const [totalPages, setTotalPages] = useState(0);
+const [isError, setIsError] = useState(false);
+const [isModalOpen, setIsModalOpen] = useState(false);
+const [modalImage, setModalImage] = useState(null);
 
-    const [click, setClick] = useState({
-        good: 0,
-        neutral: 0,
-        bad: 0
-         
-    });
-    const updateFeedback = feedbackType => {
-        setClick((type) => ({
-            ...type,
-            [feedbackType]: type[feedbackType] + 1,
-        }));
-      
-        }
-        const totalFeedback = click.good + click.neutral + click.bad;
-        const positiveFeedback = totalFeedback>0 ? (Math.round(click.good / totalFeedback * 100)) : 0;
-       
-        const handleResetClick = () => {
-         
-             setClick({
-              good: 0,
-              neutral: 0,
-              bad: 0
-             });
+
+const openModal = (imageUrl) => {
+  setModalImage(imageUrl);
+  setIsModalOpen(true);
+};
+
+const closeModal = () => {
+  setIsModalOpen(false);
+  setModalImage(null);
+};
+
+useEffect(() =>{
+  const abortController = new AbortController();
+    if (!query) return; 
+   
+ const getData = async () =>{
+
+    try{
+      setIsLoading(true);
+      const data = await fetchHits(query, page+1, abortController.signal);
+     
+      setHits((prev) => [...prev, ...data.hits]);
+      setTotalPages(Math.ceil(data.total / data.perPage)); 
+      }
+            catch (error){
+           
+            if (error.code !== 'ERR_CANCELED') {
+              setIsError(true);
+              toast.error('Server is not responsive...');
             
-          };
+            }
+         } finally {
+          setIsLoading(false);
+        }
+ };
+ getData();
+ return () => abortController.abort();
 
-      useEffect(() => {
-      
-        const saved = window.localStorage.getItem('feedback');
-        const parsed = JSON.parse(saved);
+},[query,page]) 
 
-        if (saved !== null) {
-         return     setClick(parsed)
-           } 
-        
-    },[]);
-
-
-        useEffect(() => {
-    
-          localStorage.setItem('feedback', JSON.stringify(click));
-      }, [click]);
-
-        
+const handleChange = (newQuery) => {
  
+
+    setQuery(newQuery);
+    setHits([]);
+    setPage(0);
+    setTotalPages(0);
+    setIsError(false);
+  };
+
   return (
     <>
-<Description/>
-<Options updateFeedback={updateFeedback}  totalFeedback={totalFeedback} 
-         handleResetClick ={handleResetClick}/>
+  <SearchBar onSubmit={handleChange}/>
 
-{ 
-(totalFeedback > 0) ? <Feedback click={click} totalFeedback={totalFeedback}  positiveFeedback ={positiveFeedback} /> 
-                      : (<Notification message="No feedback yet" />)
-} 
-
+ <ImageGallery hits={hits} onImageClick={openModal} />
+<ImageModal isOpen={isModalOpen} onClose={closeModal} imageUrl={modalImage}/>
+{isError && <ErrorMessage/>}
+{isLoading && <Loader/>}
+{(page +1 )< totalPages && !isLoading && <LoadMoreBtn onClick={() => setPage(page + 1)}/>}
     </>
   );
 };
